@@ -190,6 +190,17 @@
             </div>
             <p class="mt-1 text-xs text-muted">Cài đặt DNS để chặn máy chủ Apple thu hồi quyền Gold trên thiết bị.</p>
 
+            <!-- Warning Callout: Check Gold First -->
+            <div class="mt-3.5 flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50/90 p-3 text-amber-900 shadow-xs">
+              <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-200/90 text-amber-800 font-bold text-xs mt-0.5">
+                <i data-lucide="alert-circle" class="h-3.5 w-3.5"></i>
+              </span>
+              <div class="text-xs leading-relaxed">
+                <strong class="text-amber-950 font-semibold block">⚠️ QUAN TRỌNG: Hãy kiểm tra Gold trước khi cài!</strong>
+                <span>Chỉ tải và cài đặt Profile DNS này <strong>SAU KHI</strong> bạn mở app Locket và xác nhận tài khoản <strong>đã nhận được Gold</strong> thành công nhé.</span>
+              </div>
+            </div>
+
             <div class="mt-4 flex flex-col gap-2.5 sm:flex-row">
               <!-- Download MobileConfig DNS -->
               <a href="https://locket-pre.vercel.app/download-config" download="locket.mobileconfig"
@@ -346,6 +357,17 @@
               </div>
               <p class="mt-1 text-xs text-muted">Cài đặt DNS để chặn máy chủ Apple thu hồi quyền Gold trên thiết bị.</p>
 
+              <!-- Warning Callout: Check Gold First -->
+              <div class="mt-3.5 flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50/90 p-3 text-amber-900 shadow-xs">
+                <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-200/90 text-amber-800 font-bold text-xs mt-0.5">
+                  <i data-lucide="alert-circle" class="h-3.5 w-3.5"></i>
+                </span>
+                <div class="text-xs leading-relaxed">
+                  <strong class="text-amber-950 font-semibold block">⚠️ QUAN TRỌNG: Hãy kiểm tra Gold trước khi cài!</strong>
+                  <span>Chỉ tải và cài đặt Profile DNS này <strong>SAU KHI</strong> bạn mở app Locket và xác nhận tài khoản <strong>đã nhận được Gold</strong> thành công nhé.</span>
+                </div>
+              </div>
+
               <div class="mt-4 flex flex-col gap-2.5 sm:flex-row">
                 <!-- Download MobileConfig DNS -->
                 <a href="https://locket-pre.vercel.app/download-config" download="locket.mobileconfig"
@@ -436,6 +458,32 @@
                 <span>Mở App Locket</span>
                 <i data-lucide="external-link" class="h-[18px] w-[18px]"></i>
               </a>
+            </div>
+          </div>
+
+          <!-- Failed Actions Panel (Khi gặp lỗi mạng / Gateway) -->
+          <div id="failedActions" class="mt-6 hidden">
+            <div class="rounded-2xl border border-red-200/80 bg-red-50/70 p-4 sm:p-5 shadow-xs">
+              <div class="flex items-start gap-3.5">
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600 shadow-xs">
+                  <i data-lucide="alert-triangle" class="h-5 w-5"></i>
+                </span>
+                <div class="min-w-0 flex-1">
+                  <h3 class="font-display text-base font-semibold text-red-700">Kích hoạt tạm thời gián đoạn</h3>
+                  <p id="failedReasonText" class="mt-1 text-xs leading-relaxed text-red-700 font-medium">Máy chủ Locket / Gateway đám mây tạm thời gián đoạn kết nối do quá tải. Vui lòng thử lại.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-4 flex flex-col gap-3 sm:flex-row">
+              <button id="retryBtn" class="btn-primary flex-1 justify-center !bg-accent-600 hover:!bg-accent-700 text-white font-semibold shadow-lift">
+                <i data-lucide="rotate-cw" class="h-4 w-4"></i>
+                <span>🔄 Thử lại ngay</span>
+              </button>
+              <button id="failResetBtn" class="btn-secondary flex-1 justify-center">
+                <i data-lucide="arrow-left" class="h-4 w-4"></i>
+                <span>Kích hoạt tài khoản khác</span>
+              </button>
             </div>
           </div>
         </div>
