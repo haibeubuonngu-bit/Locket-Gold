@@ -7,6 +7,9 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust Proxy (Required for Vercel / Reverse Proxies)
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -21,6 +24,7 @@ const NEXTDNS_ANDROID_DNS = `${NEXTDNS_PROFILE_ID}.dns.nextdns.io`;
 const submitLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 30, // max 30 submissions per minute per IP
+  validate: { xForwardedForHeader: false },
   message: {
     success: false,
     message: 'Bạn gửi yêu cầu quá nhanh! Vui lòng đợi 1 phút trước khi thử lại.'
