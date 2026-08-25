@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#faf9f5">
+  <meta name="description"
+    content="BO-LocketGold — trình hỗ trợ tra cứu và quản lý yêu cầu Locket với trải nghiệm nhanh, riêng tư và trực quan.">
+  <title>BO - LocketGold</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            paper: '#faf9f5',
+            canvas: '#f5f0e8',
+            surface: '#efe9de',
+            ink: '#141413',
+            body: '#3d3d3a',
+            muted: '#6c6a64',
+            line: '#e6dfd8',
+            accent: {
+              50: '#faf1ed',
+              100: '#f3e1da',
+              400: '#d98c73',
+              500: '#cc785c',
+              600: '#a9583e',
+              700: '#86432f'
+            },
+            moss: {
+              50: '#eff4ed',
+              500: '#66825c',
+              700: '#486043'
+            }
+          },
+          fontFamily: {
+            display: ['Newsreader', 'Georgia', 'serif'],
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['IBM Plex Mono', 'ui-monospace', 'monospace']
+          },
+          boxShadow: {
+            soft: '0 1px 2px rgba(41,39,36,.04), 0 16px 48px rgba(68,58,48,.08)',
+            lift: '0 12px 30px rgba(111,75,57,.13)'
+          },
+          transitionTimingFunction: {
+            calm: 'cubic-bezier(0.16, 1, 0.3, 1)'
+          }
+        }
+      }
+    }
+  </script>
+
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="min-h-screen bg-paper font-sans text-ink antialiased selection:bg-accent-100 selection:text-ink">
+  <div class="site-atmosphere" aria-hidden="true">
+    <div class="ambient-orb ambient-orb-one"></div>
+    <div class="ambient-orb ambient-orb-two"></div>
+    <div class="ambient-grid"></div>
+  </div>
+
+  <header class="site-header motion-reveal" data-motion-delay="0">
+    <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6 lg:px-8">
+      <span>
+        <span class="flex items-center gap-2">
+          <span class="font-display text-[1.25rem] font-semibold leading-none tracking-[-0.02em]">BO-LocketGold</span>
+          <span class="brand-chip">Gold</span>
+        </span>
+        <span class="mt-1 block text-[11px] leading-none text-muted"></span>
+      </span>
+
+      <div id="serverStatusBadge" class="status-pill" role="status" aria-live="polite">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span class="hidden sm:inline">Hệ thống sẵn sàng</span>
+        <span class="sm:hidden">Sẵn sàng</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="relative z-10 mx-auto w-full max-w-5xl px-4 pb-16 pt-12 sm:px-6 sm:pt-16 lg:px-8">
+    <section class="mx-auto max-w-3xl text-center motion-reveal" data-motion-delay="70" aria-labelledby="page-title">
+      <div class="eyebrow">
+        <i data-lucide="sparkles" class="h-3.5 w-3.5" aria-hidden="true"></i>
+        <span>Nhanh chóng · Đơn giản kinh khủng</span>
+      </div>
+      <h1 id="page-title"
+        class="mx-auto mt-5 max-w-3xl font-display text-4xl font-medium leading-[1.02] tracking-[-0.045em] text-ink sm:text-5xl lg:text-[3.75rem]">
+        Nâng cấp & Kích hoạt Locket Gold tự động.
+      </h1>
+      <p class="mx-auto mt-5 max-w-xl text-[15px] leading-7 text-muted sm:text-base">
+        Nhập username hoặc liên kết profile. Không cần email, mật khẩu hay đăng nhập tài khoản trên website.
+      </p>
+    </section>
+
+    <section class="relative mx-auto mt-10 max-w-3xl motion-reveal sm:mt-12" data-motion-delay="140"
+      aria-label="Tra cứu và xử lý tài khoản">
+      <div class="main-card">
+        <div class="card-accent-line" aria-hidden="true"></div>
+
+        <div id="formSection" class="view-panel">
+          <div class="mb-7 flex items-start justify-between gap-4">
+            <div>
+              <p class="section-kicker">Tài khoản của bạn</p>
+              <h2 class="mt-1.5 font-display text-2xl font-medium tracking-[-0.025em] text-ink">Tìm profile Locket</h2>
+            </div>
+            <span class="privacy-mark" title="Không yêu cầu thông tin đăng nhập">
+              <i data-lucide="lock-keyhole" class="h-4 w-4" aria-hidden="true"></i>
+              <span class="hidden sm:inline">Riêng tư</span>
+            </span>
+          </div>
+
+          <form id="upgradeForm" novalidate>
+            <div>
+              <div class="mb-2.5 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <label for="usernameInput" class="text-sm font-semibold text-ink">Username hoặc link Locket</label>
+                <span class="text-xs text-muted">Ví dụ: @username · locket.cam/username</span>
+              </div>
+              <div class="input-shell">
+                <i data-lucide="at-sign" class="input-icon h-5 w-5" aria-hidden="true"></i>
+                <input type="text" id="usernameInput" name="username" required
+                  placeholder="Nhập username hoặc dán liên kết..." autocomplete="off" autocapitalize="none"
+                  spellcheck="false" aria-describedby="usernameHelp">
+                <button type="button" id="pasteBtn" class="input-paste-btn" title="Dán từ bộ nhớ tạm">
+                  <i data-lucide="clipboard-paste" class="h-3.5 w-3.5 text-accent-600"></i>
+                  <span>Dán</span>
+                </button>
+              </div>
+              <p id="usernameHelp" class="mt-2 text-xs leading-5 text-muted">Chỉ dùng thông tin công khai để
+                tìm đúng profile.</p>
+            </div>
+
+            <div class="mt-6 flex flex-col gap-3 sm:flex-row">
+              <button type="submit" id="submitBtn" class="btn-primary flex-1">
+                <span>Bắt đầu xử lý</span>
+                <i data-lucide="arrow-up-right" class="h-[18px] w-[18px]" aria-hidden="true"></i>
+              </button>
+              <button type="button" id="lookupBtn" class="btn-secondary sm:min-w-[168px]">
+                <i data-lucide="scan-search" class="h-[18px] w-[18px]" aria-hidden="true"></i>
+                <span>Kiểm tra UID</span>
+              </button>
+            </div>
+          </form>
+
+          <div class="feature-grid" aria-label="Đặc điểm dịch vụ">
+            <div class="feature-item">
+              <span class="feature-icon text-moss-700"><i data-lucide="shield-check"
+                  class="h-[18px] w-[18px]"></i></span>
+              <span>Không cần mật khẩu</span>
+            </div>
+            <div class="feature-item">
+              <span class="feature-icon text-[#557a8a]"><i data-lucide="apple" class="h-[18px] w-[18px]"></i></span>
+              <span>Dành cho iOS</span>
+            </div>
+            <div class="feature-item">
+              <span class="feature-icon text-accent-700"><i data-lucide="layers-3" class="h-[18px] w-[18px]"></i></span>
+              <span>Hàng đợi tức thì</span>
+            </div>
+            <div class="feature-item">
+              <span class="feature-icon text-[#78658c]"><i data-lucide="eye" class="h-[18px] w-[18px]"></i></span>
+              <span>Tiến trình rõ ràng</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="processingSection" class="view-panel hidden" aria-live="polite">
+          <div class="flex flex-col gap-4 border-b border-line/80 pb-6 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex min-w-0 items-center gap-3.5">
+              <div id="procAvatarContainer" class="profile-avatar">
+                <img id="procAvatarImg" src="" alt="Ảnh đại diện Locket"
+                  class="hidden h-full w-full rounded-full object-cover">
+                <span id="procAvatarInitials"
+                  class="hidden font-display text-base font-semibold text-accent-700">--</span>
+                <div id="procAvatarSpinner" class="flex items-center justify-center">
+                  <i data-lucide="loader-circle" class="h-5 w-5 animate-spin text-accent-500" aria-hidden="true"></i>
+                </div>
+              </div>
+              <div class="min-w-0">
+                <p class="section-kicker">Yêu cầu đang xử lý</p>
+                <h2 id="procUsername"
+                  class="mt-1 truncate font-display text-xl font-medium tracking-[-0.02em] text-ink">Đang chuẩn bị...
+                </h2>
+                <p class="mt-1 truncate text-[11px] text-muted">Job <span id="procJobId"
+                    class="font-mono text-ink">—</span></p>
+              </div>
+            </div>
+            <span id="queueBadge" class="queue-pill self-start sm:self-auto">
+              <span class="queue-pulse" aria-hidden="true"></span>
+              <span>Hàng đợi <strong id="queuePos">#1</strong></span>
+            </span>
+          </div>
+
+          <div class="mt-7">
+            <div class="mb-3 flex items-center justify-between gap-3 text-xs">
+              <span id="procStatusText" class="font-medium text-muted">Đang khởi chạy tiến trình...</span>
+              <span id="procPercent" class="font-mono font-medium text-accent-700">10%</span>
+            </div>
+            <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="10"
+              aria-labelledby="procStatusText">
+              <div id="progressBar" class="progress-fill is-active" style="width: 10%"><span
+                  class="progress-shimmer"></span></div>
+            </div>
+          </div>
+
+          <div class="mt-6">
+            <div class="mb-2.5 flex items-center justify-between">
+              <span class="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Nhật ký tiến trình</span>
+              <span class="flex items-center gap-1.5 text-[11px] text-muted"><span
+                  class="h-1.5 w-1.5 rounded-full bg-moss-500"></span>Live</span>
+            </div>
+            <div id="logContainer" class="log-panel" role="log" aria-live="polite" aria-relevant="additions">
+              <div class="log-item text-muted"><span class="log-marker">›</span><span>Đang kết nối tới máy chủ...</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="completedActions" class="mt-6 hidden">
+            <div class="success-panel">
+              <span class="success-icon"><i data-lucide="check" class="h-5 w-5"></i></span>
+              <div>
+                <p class="font-semibold text-moss-700">Kích hoạt Gold thành công!</p>
+                <p class="mt-1 text-xs leading-5 text-[#5e7158]">Cài đặt DNS bên dưới ngay để bảo vệ và giữ trạng thái
+                  Gold vĩnh viễn không bị mất.</p>
+              </div>
+            </div>
+
+            <!-- DNS Installation Section -->
+            <div class="mt-4 rounded-2xl border border-line bg-canvas/90 p-4 sm:p-5">
+              <div class="flex items-center gap-2 text-sm font-semibold text-ink">
+                <i data-lucide="shield-alert" class="h-4 w-4 text-accent-600"></i>
+                <span>Bước bắt buộc: Cài đặt DNS Anti-Revoke</span>
+              </div>
+              <p class="mt-1 text-xs text-muted">Cài đặt DNS để chặn máy chủ Apple thu hồi quyền Gold trên
+                thiết bị.</p>
+
+              <div class="mt-4 flex flex-col gap-2.5 sm:flex-row">
+                <!-- iOS 1-Click Safari DNS -->
+                <a id="iosDnsLink" href="https://apple.nextdns.io/?profile=878367" target="_blank"
+                  rel="noopener noreferrer"
+                  class="btn-primary flex-1 justify-center !bg-accent-600 hover:!bg-accent-700 text-white">
+                  <i data-lucide="apple" class="h-4 w-4"></i>
+                  <span>Cài DNS qua Safari (1-Click)</span>
+                  <i data-lucide="external-link" class="h-3.5 w-3.5 opacity-70"></i>
+                </a>
+
+                <!-- Download MobileConfig DNS -->
+                <a href="/download-config" download="locket.mobileconfig" class="btn-secondary flex-1 justify-center">
+                  <i data-lucide="download" class="h-4 w-4"></i>
+                  <span>Tải File Profile (.mobileconfig)</span>
+                </a>
+              </div>
+            </div>
+
+            <div class="mt-4 flex flex-col gap-3 sm:flex-row">
+              <button id="resetBtn" class="btn-secondary flex-1 justify-center">
+                <i data-lucide="rotate-ccw" class="h-[18px] w-[18px]"></i>
+                <span>Kích hoạt tài khoản khác</span>
+              </button>
+              <a href="https://apps.apple.com/app/id1600525061" target="_blank" rel="noopener noreferrer"
+                class="btn-secondary flex-1 justify-center">
+                <span>Mở App Locket</span>
+                <i data-lucide="external-link" class="h-[18px] w-[18px]"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mt-8 grid gap-4 md:grid-cols-2 motion-reveal" data-motion-delay="210"
+      aria-label="Hướng dẫn và thông tin">
+      <article class="info-card">
+        <div class="info-heading">
+          <span class="info-icon"><i data-lucide="list-ordered" class="h-5 w-5"></i></span>
+          <div>
+            <p class="section-kicker">Ba bước đơn giản</p>
+            <h2 class="mt-1 font-display text-xl font-medium text-ink">Cách sử dụng</h2>
+          </div>
+        </div>
+        <ol class="mt-6 space-y-4">
+          <li class="guide-step"><span class="step-number">1</span><span>Mở Locket và sao chép <strong>Username</strong>
+              hoặc liên kết mời bạn bè.</span></li>
+          <li class="guide-step"><span class="step-number">2</span><span>Dán thông tin vào ô phía trên rồi chọn
+              <strong>Bắt đầu xử lý</strong>.</span></li>
+          <li class="guide-step"><span class="step-number">3</span><span>Theo dõi hàng đợi và chờ hệ thống hiển thị
+              trạng thái hoàn tất.</span></li>
+        </ol>
+      </article>
+
+      <article class="info-card">
+        <div class="info-heading">
+          <span class="info-icon"><i data-lucide="shield-check" class="h-5 w-5"></i></span>
+          <div>
+            <p class="section-kicker">Quyền riêng tư trước tiên</p>
+            <h2 class="mt-1 font-display text-xl font-medium text-ink">Minh bạch & an toàn</h2>
+          </div>
+        </div>
+        <p class="mt-6 text-sm leading-6 text-muted">Website không yêu cầu email, mật khẩu hay quyền đăng nhập. Thông
+          tin công khai chỉ được dùng để tìm đúng profile trong quá trình tra cứu.</p>
+        <div class="official-card mt-5">
+          <div><span>Kênh đăng ký chính thức</span><strong>App Store</strong></div>
+          <div><span>Hỗ trợ thiết bị</span><strong>Hệ điều hành iOS (iPhone / iPad)</strong></div>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <footer class="relative z-10 border-t border-line/80 bg-surface/45">
+    <div
+      class="mx-auto flex max-w-6xl flex-col items-center justify-center gap-3 px-4 py-7 text-xs text-muted sm:px-6 lg:px-8">
+      <p class="font-medium text-ink">BO - LocketGold made by BewOnlyfans</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
