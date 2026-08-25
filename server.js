@@ -232,27 +232,6 @@ async function resolveLocketUid(input) {
   }
 }
 
-// Helper: Translate technical errors to user-friendly Vietnamese
-function normalizeErrorMessage(err) {
-  const str = String(err?.message || err || '');
-  if (str.includes('SSLEOFError') || str.includes('SSLError') || str.includes('api.locketcamera.com') || str.includes('UNEXPECTED_EOF_WHILE_READING') || str.includes('HTTPSConnectionPool')) {
-    return 'Máy chủ Locket (api.locketcamera.com) tạm thời gián đoạn kết nối SSL với Gateway. Vui lòng thử lại.';
-  }
-  if (str.includes('RemoteDisconnected') || str.includes('Connection aborted') || str.includes('ECONNRESET') || str.includes('socket hang up') || str.includes('fetch failed')) {
-    return 'Máy chủ Locket / Gateway đám mây tạm thời gián đoạn kết nối do quá tải. Vui lòng bấm Thử lại.';
-  }
-  if (str.includes('User data not found') || str.includes('Không tìm thấy tài khoản') || str.includes('không tồn tại')) {
-    return 'Không tìm thấy tài khoản Locket. Vui lòng kiểm tra lại chính xác Username hoặc link mời.';
-  }
-  if (str.includes('ETIMEDOUT') || str.includes('timeout') || str.includes('aborted')) {
-    return 'Thời gian kết nối đến máy chủ quá lâu. Vui lòng kiểm tra kết nối mạng và thử lại.';
-  }
-  if (str.includes('429') || str.includes('Too Many Requests')) {
-    return 'Hệ thống đang quá tải yêu cầu. Vui lòng đợi giây lát rồi thử lại.';
-  }
-  return str.replace(/^[❌⚠️\s]+/, '').trim() || 'Có lỗi xảy ra trong quá trình xử lý.';
-}
-
 // Queue Processor Loop
 async function processQueue() {
   if (isProcessing || queue.length === 0) return;
@@ -283,113 +262,95 @@ async function processQueue() {
       job.logs.push(`Đã tìm thấy tài khoản! @${job.cleanUsername} (UID: ${job.uid})`);
       saveJobsToFile();
 
-      await new Promise(r => setTimeout(r, 800));
+      await new Promise(r => setTimeout(r, 1000));
 
-      // Step 2: Call Vercel Remote Restore API Gateway with Auto-Retry (Up to 3 attempts)
+      // Step 2: Call Vercel Remote Restore API Gateway
       job.progress = 30;
       job.logs.push('Đang gửi yêu cầu kích hoạt tới Gateway đám mây...');
 
-      let isGatewayDone = false;
-      const MAX_RETRIES = 3;
+      try {
+        const restoreRes = await fetch('https://locket-pre.vercel.app/api/restore', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'origin': 'https://locket-pre.vercel.app',
+            'referer': 'https://locket-pre.vercel.app/',
+            'user-agent': 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36'
+          },
+          body: JSON.stringify({ username: job.cleanUsername })
+        });
 
-      for (let attempt = 1; attempt <= MAX_RETRIES && !isGatewayDone; attempt++) {
-        try {
-          if (attempt > 1) {
-            job.logs.push(`⚠️ Đang tự động kết nối lại Gateway (Lần ${attempt}/${MAX_RETRIES})...`);
-            saveJobsToFile();
-            await new Promise(r => setTimeout(r, attempt * 1500));
-          }
-
-          const restoreRes = await fetch('https://locket-pre.vercel.app/api/restore', {
-            method: 'POST',
-            headers: {
-              'content-type': 'application/json',
-              'origin': 'https://locket-pre.vercel.app',
-              'referer': 'https://locket-pre.vercel.app/',
-              'user-agent': 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Mobile Safari/537.36'
-            },
-            body: JSON.stringify({ username: job.cleanUsername })
-          });
-
-          if (!restoreRes.ok) {
-            throw new Error(`Gateway phản hồi mã trạng thái HTTP ${restoreRes.status}`);
-          }
-
+        if (restoreRes.ok) {
           const rData = await restoreRes.json();
-          if (!rData.client_id) {
-            throw new Error(rData.error || 'Gateway không tạo được Client ID');
-          }
+          if (rData.client_id) {
+            job.logs.push(`Gateway đã tạo Client ID: ${rData.client_id}`);
+            job.logs.push('Đang xếp hàng và chờ Gateway nạp biên lai Gold...');
 
-          job.logs.push(`Gateway đã tạo Client ID: ${rData.client_id}`);
-          job.logs.push('Đang xếp hàng và chờ Gateway nạp biên lai Gold...');
+            let isGatewayDone = false;
+            let lastStatusLogged = '';
 
-          let lastStatusLogged = '';
+            // Poll status until completion (up to 35 iterations ~ 50s)
+            for (let p = 0; p < 35; p++) {
+              await new Promise(r => setTimeout(r, 1500));
+              try {
+                const sRes = await fetch('https://locket-pre.vercel.app/api/queue/status', {
+                  method: 'POST',
+                  headers: {
+                    'content-type': 'application/json',
+                    'origin': 'https://locket-pre.vercel.app',
+                    'referer': 'https://locket-pre.vercel.app/'
+                  },
+                  body: JSON.stringify({ client_id: rData.client_id })
+                });
 
-          // Poll status until completion (up to 35 iterations ~ 50s)
-          for (let p = 0; p < 35; p++) {
-            await new Promise(r => setTimeout(r, 1500));
-            
-            const sRes = await fetch('https://locket-pre.vercel.app/api/queue/status', {
-              method: 'POST',
-              headers: {
-                'content-type': 'application/json',
-                'origin': 'https://locket-pre.vercel.app',
-                'referer': 'https://locket-pre.vercel.app/'
-              },
-              body: JSON.stringify({ client_id: rData.client_id })
-            });
+                if (sRes.ok) {
+                  const sData = await sRes.json();
+                  const curStatus = sData.status || 'waiting';
 
-            if (!sRes.ok) {
-              throw new Error(`Lỗi kết nối kiểm tra tiến trình (HTTP ${sRes.status})`);
-            }
-
-            const sData = await sRes.json();
-            const curStatus = sData.status || 'waiting';
-
-            if (curStatus === 'completed' || curStatus === 'done' || (sData.success && sData.result)) {
-              job.progress = 95;
-              const successMsg = sData.result?.msg || 'Đã nạp biên lai Gold thành công!';
-              job.logs.push(`✅ ${successMsg}`);
-              isGatewayDone = true;
-              break;
-            } else if (curStatus === 'error' || curStatus === 'failed') {
-              const errDetail = sData.error || 'Không tìm thấy tài khoản hoặc dữ liệu không hợp lệ';
-              throw new Error(errDetail);
-            } else if (sData.position > 0) {
-              job.progress = Math.min(80, 25 + (p * 2));
-              const statusText = `Đang chờ trong hàng đợi: Vị trí #${sData.position} (Ước tính: ${sData.estimated_time || 0}s)`;
-              if (lastStatusLogged !== statusText) {
-                job.logs.push(statusText);
-                lastStatusLogged = statusText;
+                  if (curStatus === 'completed' || curStatus === 'done' || (sData.success && sData.result)) {
+                    job.progress = 95;
+                    const successMsg = sData.result?.msg || 'Đã nạp biên lai Gold thành công!';
+                    job.logs.push(`✅ ${successMsg}`);
+                    isGatewayDone = true;
+                    break;
+                  } else if (curStatus === 'error' || curStatus === 'failed') {
+                    const errDetail = sData.error || 'Không tìm thấy tài khoản hoặc dữ liệu không hợp lệ';
+                    job.logs.push(`❌ Lỗi Gateway: ${errDetail}`);
+                    throw new Error(errDetail);
+                  } else if (sData.position > 0) {
+                    job.progress = Math.min(80, 25 + (p * 2));
+                    const statusText = `Đang chờ trong hàng đợi: Vị trí #${sData.position} (Ước tính: ${sData.estimated_time || 0}s)`;
+                    if (lastStatusLogged !== statusText) {
+                      job.logs.push(statusText);
+                      lastStatusLogged = statusText;
+                    }
+                  } else {
+                    // Position is 0 -> Worker actively processing
+                    job.progress = Math.min(90, 45 + (p * 5));
+                    if (p === 0 || p === 3 || p === 6) {
+                      const processingStages = [
+                        'Đang kết nối tới máy chủ khai thác và phân bổ worker...',
+                        'Worker đang nạp biên lai Apple In-App Purchase (locket_199_1m)...',
+                        'Đang đồng bộ quyền lợi với máy chủ Locket / RevenueCat...'
+                      ];
+                      const stageText = processingStages[Math.floor(p / 3)] || 'Đang hoàn tất nạp biên lai...';
+                      job.logs.push(stageText);
+                    }
+                  }
+                }
+              } catch (err) {
+                if (err.message && (err.message.includes('User data not found') || err.message.includes('Lỗi Gateway'))) {
+                  throw err;
+                }
               }
-            } else {
-              // Position is 0 -> Worker actively processing
-              job.progress = Math.min(90, 45 + (p * 5));
-              if (p === 0 || p === 3 || p === 6) {
-                const processingStages = [
-                  'Đang kết nối tới máy chủ khai thác và phân bổ worker...',
-                  'Worker đang nạp biên lai Apple In-App Purchase (locket_199_1m)...',
-                  'Đang đồng bộ quyền lợi với máy chủ Locket / RevenueCat...'
-                ];
-                const stageText = processingStages[Math.floor(p / 3)] || 'Đang hoàn tất nạp biên lai...';
-                job.logs.push(stageText);
-              }
             }
-          }
-        } catch (attemptErr) {
-          const friendly = normalizeErrorMessage(attemptErr);
-          const isFatal = attemptErr.message?.includes('User data not found');
-
-          if (!isFatal && attempt < MAX_RETRIES) {
-            job.logs.push(`⚠️ Gián đoạn kết nối Gateway: ${friendly}`);
-          } else {
-            throw new Error(friendly);
           }
         }
-      }
-
-      if (!isGatewayDone) {
-        throw new Error('Gateway chưa hoàn tất quá trình nạp Gold sau thời gian chờ. Vui lòng bấm Thử lại.');
+      } catch (e) {
+        if (e.message && e.message.includes('User data not found')) {
+          throw new Error('Tài khoản Locket không tồn tại hoặc sai username (User data not found)');
+        }
+        job.logs.push(`Thông báo: ${e.message}`);
       }
 
       // Step 3: Verification / Completion & DNS generation
@@ -407,7 +368,7 @@ async function processQueue() {
       saveJobsToFile();
     } catch (err) {
       job.status = 'failed';
-      job.error = normalizeErrorMessage(err);
+      job.error = err.message || 'Lỗi không xác định trong quá trình xử lý';
       job.logs.push(`❌ Thất bại: ${job.error}`);
       saveJobsToFile();
     }

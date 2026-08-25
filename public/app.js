@@ -194,34 +194,6 @@ function extractCleanUsername(input) {
     });
   });
 
-  const retryBtn = document.getElementById('retryBtn');
-  if (retryBtn) {
-    retryBtn.addEventListener('click', () => {
-      retryCurrentJob();
-    });
-  }
-
-  const failResetBtn = document.getElementById('failResetBtn');
-  if (failResetBtn) {
-    failResetBtn.addEventListener('click', async () => {
-      stopPolling();
-      currentJobId = null;
-      resetProcessingState();
-
-      await switchView(
-        document.getElementById('processingSection'),
-        document.getElementById('formSection')
-      );
-
-      usernameInput.value = '';
-      usernameInput.focus({ preventScroll: true });
-      document.querySelector('.main-card')?.scrollIntoView({
-        behavior: prefersReducedMotion.matches ? 'auto' : 'smooth',
-        block: 'center'
-      });
-    });
-  }
-
   // Paste Clipboard to Input
   const pasteBtn = document.getElementById('pasteBtn');
   if (pasteBtn && usernameInput) {
@@ -599,7 +571,11 @@ function startPolling(jobId, username = '') {
       if (job.status === 'failed') {
         stopPolling();
         closeQueueModal();
-        showFailedJob(job);
+        await showClaudeAlert({
+          icon: 'error',
+          title: 'Xử lý thất bại',
+          text: job.error || 'Có lỗi xảy ra trong quá trình xử lý.'
+        });
         return;
       }
     } catch (error) {
@@ -612,68 +588,6 @@ function startPolling(jobId, username = '') {
   };
 
   poll();
-}
-
-async function showFailedJob(job) {
-  stopPolling();
-  closeQueueModal();
-
-  const formSection = document.getElementById('formSection');
-  const processingSection = document.getElementById('processingSection');
-  if (formSection && !formSection.classList.contains('hidden')) {
-    await switchView(formSection, processingSection);
-  }
-
-  const failedActions = document.getElementById('failedActions');
-  const completedActions = document.getElementById('completedActions');
-  const failedReasonText = document.getElementById('failedReasonText');
-  const progressBar = document.getElementById('progressBar');
-
-  if (completedActions) completedActions.classList.add('hidden');
-  if (failedActions) {
-    failedActions.classList.remove('hidden');
-  }
-  if (failedReasonText) {
-    failedReasonText.textContent = job.error || 'Máy chủ Locket / Gateway đám mây tạm thời gián đoạn kết nối do quá tải. Vui lòng bấm Thử lại.';
-  }
-
-  if (progressBar) {
-    progressBar.classList.remove('is-active');
-  }
-  updateProgress(job.progress || 35, 'Kích hoạt gián đoạn');
-
-  if (window.lucide) lucide.createIcons();
-
-  // Show SweetAlert2 popup with instant retry
-  const result = await Swal.fire({
-    ...claudeAlertDefaults,
-    icon: 'warning',
-    title: 'Kết nối bị gián đoạn',
-    text: job.error || 'Máy chủ Locket / Gateway đám mây tạm thời gián đoạn kết nối do quá tải. Bạn có muốn thử lại ngay không?',
-    showCancelButton: true,
-    confirmButtonText: '🔄 Thử lại ngay',
-    cancelButtonText: 'Đóng',
-    customClass: {
-      ...claudeAlertDefaults.customClass,
-      confirmButton: 'claude-confirm !bg-accent-600 hover:!bg-accent-700 font-semibold px-4 py-2.5 rounded-xl text-white',
-      cancelButton: 'claude-confirm !bg-surface !text-body hover:!bg-line border border-line ml-2 px-4 py-2.5 rounded-xl'
-    }
-  });
-
-  if (result.isConfirmed) {
-    retryCurrentJob();
-  }
-}
-
-function retryCurrentJob() {
-  if (currentSubmittedUser) {
-    submitToQueue(currentSubmittedUser);
-  } else {
-    const input = document.getElementById('usernameInput');
-    if (input && input.value.trim()) {
-      submitToQueue(input.value.trim());
-    }
-  }
 }
 
 function stopPolling() {
@@ -811,16 +725,14 @@ function resetProcessingState() {
   activeAvatarUrl = null;
 
   const completedActions = document.getElementById('completedActions');
-  const failedActions = document.getElementById('failedActions');
   const progressBar = document.getElementById('progressBar');
   const avatarContainer = document.getElementById('procAvatarContainer');
   const avatarImage = document.getElementById('procAvatarImg');
   const avatarInitials = document.getElementById('procAvatarInitials');
   const avatarSpinner = document.getElementById('procAvatarSpinner');
 
-  if (completedActions) completedActions.classList.add('hidden');
-  if (failedActions) failedActions.classList.add('hidden');
-  completedActions?.querySelector('.success-panel')?.classList.remove('is-visible');
+  completedActions.classList.add('hidden');
+  completedActions.querySelector('.success-panel')?.classList.remove('is-visible');
   progressBar.classList.add('is-active');
   updateProgress(10, 'Đang khởi chạy tiến trình...');
 
