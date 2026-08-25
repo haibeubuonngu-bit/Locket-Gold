@@ -277,6 +277,178 @@ async function showAccountResult(account) {
   });
 }
 
+let isQueueModalOpen = false;
+let lastRenderedPos = null;
+let currentSubmittedUser = '';
+
+// --- Queue Modal Functions ---
+
+function openQueueModal(position, estimatedSeconds, username) {
+  const modal = document.getElementById('queueModal');
+  const card = document.getElementById('queueModalCard');
+  const posEl = document.getElementById('queueModalPos');
+  const estEl = document.getElementById('queueModalEstimate');
+  const listEl = document.getElementById('queueModalList');
+  const countEl = document.getElementById('queueModalAheadCount');
+
+  if (!modal || !card) return;
+
+  isQueueModalOpen = true;
+  lastRenderedPos = position;
+
+  posEl.textContent = `#${position || 1}`;
+  estEl.textContent = `~${estimatedSeconds || 10}s`;
+  countEl.textContent = `${Math.max(0, (position || 1) - 1)} người`;
+
+  // Initial list showing current user
+  listEl.innerHTML = `
+    <div class="flex items-center justify-between p-2.5 rounded-xl bg-white border border-moss-300 shadow-xs">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="h-6 w-6 rounded-full bg-moss-700 text-white font-bold text-[10px] flex items-center justify-center">Bạn</span>
+        <span class="font-semibold text-moss-700 truncate">@${escapeHtml(normalizeDisplayUsername(username))}</span>
+      </div>
+      <span class="text-[10px] font-bold text-moss-700 bg-moss-100 px-2.5 py-0.5 rounded-full shrink-0">
+        Vị trí #${position || 1}
+      </span>
+    </div>
+  `;
+
+  modal.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    modal.classList.remove('opacity-0');
+    card.classList.remove('opacity-0', 'scale-95');
+    card.classList.add('opacity-100', 'scale-100');
+  });
+
+  const closeBtn = document.getElementById('queueModalCloseBtn');
+  if (closeBtn) {
+    closeBtn.onclick = () => closeQueueModal();
+  }
+
+  if (window.lucide) lucide.createIcons();
+}
+
+function updateQueueModal(job, username) {
+  if (!isQueueModalOpen) return;
+
+  const posEl = document.getElementById('queueModalPos');
+  const estEl = document.getElementById('queueModalEstimate');
+  const listEl = document.getElementById('queueModalList');
+  const countEl = document.getElementById('queueModalAheadCount');
+
+  if (!posEl || !listEl) return;
+
+  const currentPos = job.queuePosition || 1;
+
+  // Trigger bounce animation if position decreased
+  if (lastRenderedPos !== null && currentPos < lastRenderedPos) {
+    posEl.classList.remove('queue-num-pop');
+    void posEl.offsetWidth; // trigger reflow
+    posEl.classList.add('queue-num-pop');
+  }
+  lastRenderedPos = currentPos;
+
+  posEl.textContent = `#${currentPos}`;
+  estEl.textContent = `~${job.estimatedWaitSeconds || 6}s`;
+
+  const ahead = job.queueAhead || [];
+  countEl.textContent = `${ahead.length} người`;
+
+  let html = '';
+  ahead.forEach((item, idx) => {
+    const isRunning = item.isCurrentlyRunning || item.status === 'processing';
+    const initial = escapeHtml(item.initials || 'LK');
+    const avatarHtml = item.avatarUrl
+      ? `<img src="${escapeHtml(item.avatarUrl)}" class="h-7 w-7 rounded-full object-cover border border-accent-300 shrink-0 shadow-xs">`
+      : `<span class="h-7 w-7 rounded-full bg-accent-100 text-accent-700 font-bold text-[10px] flex items-center justify-center shrink-0 border border-accent-200">${initial}</span>`;
+
+    if (isRunning) {
+      html += `
+        <div class="queue-item-card queue-active-shimmer flex items-center justify-between p-2.5 rounded-2xl bg-white border border-accent-300 shadow-xs">
+          <div class="flex items-center gap-2.5 min-w-0">
+            ${avatarHtml}
+            <div class="min-w-0">
+              <span class="font-semibold text-ink text-xs truncate block">@${escapeHtml(item.maskedUsername)}</span>
+              <span class="text-[10px] text-accent-700 font-mono flex items-center gap-1">
+                <span class="h-1.5 w-1.5 rounded-full bg-accent-600 animate-ping"></span>
+                <span>Đang nạp Gold...</span>
+              </span>
+            </div>
+          </div>
+          <span class="text-[10px] font-bold text-accent-700 bg-accent-100/90 px-2.5 py-1 rounded-full shrink-0 border border-accent-200/80">
+            Active
+          </span>
+        </div>`;
+    } else {
+      html += `
+        <div class="queue-item-card flex items-center justify-between p-2.5 rounded-2xl bg-white border border-line shadow-xs">
+          <div class="flex items-center gap-2.5 min-w-0">
+            ${avatarHtml}
+            <div class="min-w-0">
+              <span class="font-semibold text-ink text-xs truncate block">@${escapeHtml(item.maskedUsername)}</span>
+              <span class="text-[10px] text-muted font-mono">Đang xếp hàng</span>
+            </div>
+          </div>
+          <span class="text-[10px] text-muted font-mono font-semibold bg-surface px-2.5 py-0.5 rounded-full shrink-0 border border-line">
+            Chờ #${item.position || (idx + 1)}
+          </span>
+        </div>`;
+    }
+  });
+
+  // Current user item at bottom (High-tech highlight)
+  html += `
+    <div class="queue-item-card flex items-center justify-between p-2.5 rounded-2xl bg-white border-2 border-moss-500 shadow-sm">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span class="h-7 w-7 rounded-full bg-moss-700 text-white font-bold text-[10px] flex items-center justify-center shrink-0 shadow-xs">Bạn</span>
+        <div class="min-w-0">
+          <span class="font-bold text-moss-700 text-xs truncate block">@${escapeHtml(normalizeDisplayUsername(username))}</span>
+          <span class="text-[10px] text-moss-700 font-medium">Tài khoản của bạn</span>
+        </div>
+      </div>
+      <span class="text-[10px] font-extrabold text-moss-700 bg-moss-50 px-3 py-1 rounded-full shrink-0 border border-moss-300 flex items-center gap-1">
+        <span class="h-1.5 w-1.5 rounded-full bg-moss-500 animate-pulse"></span>
+        <span>Vị trí #${currentPos}</span>
+      </span>
+    </div>`;
+
+  listEl.innerHTML = html;
+}
+
+function showQueueModalTurnArrived() {
+  const ring = document.getElementById('queueHudRing');
+  const posEl = document.getElementById('queueModalPos');
+  const estEl = document.getElementById('queueModalEstimate');
+  if (ring) ring.classList.add('is-turn');
+  if (estEl) estEl.textContent = '0s';
+  if (posEl) {
+    posEl.innerHTML = `
+      <div class="flex flex-col items-center justify-center scale-110 transition-transform">
+        <span class="text-2xl sm:text-3xl leading-none">🚀</span>
+        <span class="text-[9px] font-black tracking-wider text-moss-700 uppercase mt-0.5">ĐẾN LƯỢT</span>
+      </div>
+    `;
+  }
+}
+
+function closeQueueModal() {
+  const modal = document.getElementById('queueModal');
+  const card = document.getElementById('queueModalCard');
+  const ring = document.getElementById('queueHudRing');
+  if (!modal || !card) return;
+
+  card.classList.remove('opacity-100', 'scale-100');
+  card.classList.add('opacity-0', 'scale-95');
+
+  setTimeout(() => {
+    modal.classList.add('hidden');
+    if (ring) ring.classList.remove('is-turn');
+    isQueueModalOpen = false;
+  }, 250);
+}
+
+// --- Queue Submission & Polling ---
+
 async function submitToQueue(username) {
   const submitBtn = document.getElementById('submitBtn');
   setButtonLoading(submitBtn, true, 'Đang gửi yêu cầu...');
@@ -294,8 +466,18 @@ async function submitToQueue(username) {
     }
 
     currentJobId = data.jobId;
-    await showProcessingView(username, data.jobId, data.position);
-    startPolling(data.jobId);
+    currentSubmittedUser = username;
+
+    // Open Real-time Queue Modal
+    openQueueModal(data.position || 1, data.estimatedWaitSeconds || 10, username);
+
+    // Prepare processing state in background
+    resetProcessingState();
+    document.getElementById('procUsername').textContent = `@${normalizeDisplayUsername(username)}`;
+    document.getElementById('procJobId').textContent = data.jobId;
+    document.getElementById('queuePos').textContent = `#${data.position || 1}`;
+
+    startPolling(data.jobId, username);
   } catch (error) {
     await showClaudeAlert({
       icon: 'error',
@@ -327,8 +509,10 @@ async function showProcessingView(username, jobId, position) {
   });
 }
 
-function startPolling(jobId) {
+function startPolling(jobId, username = '') {
   stopPolling();
+
+  const user = username || currentSubmittedUser;
 
   const poll = async () => {
     if (currentJobId !== jobId) return;
@@ -342,18 +526,51 @@ function startPolling(jobId) {
       }
 
       const job = data.job;
-      updateAvatar(job);
-      updateQueueBadge(job);
-      renderLogs(job.logs || []);
-      updateProgress(job.progress || 0, getStatusLabel(job.status));
+
+      // Real-time Queue Modal Update
+      if (job.status === 'queued' && job.queuePosition > 0) {
+        updateQueueModal(job, user);
+        document.getElementById('queuePos').textContent = `#${job.queuePosition}`;
+      }
+
+      // If processing started (turn arrived)
+      if (job.status === 'processing') {
+        if (isQueueModalOpen) {
+          showQueueModalTurnArrived();
+          await wait(600);
+          closeQueueModal();
+        }
+
+        const formSection = document.getElementById('formSection');
+        const processingSection = document.getElementById('processingSection');
+        if (!formSection.classList.contains('hidden')) {
+          await switchView(formSection, processingSection);
+          document.querySelector('.main-card')?.scrollIntoView({
+            behavior: prefersReducedMotion.matches ? 'auto' : 'smooth',
+            block: 'center'
+          });
+        }
+
+        updateAvatar(job);
+        updateQueueBadge(job);
+        renderLogs(job.logs || []);
+        updateProgress(job.progress || 15, getStatusLabel(job.status));
+      }
 
       if (job.status === 'completed') {
+        closeQueueModal();
+        const formSection = document.getElementById('formSection');
+        const processingSection = document.getElementById('processingSection');
+        if (!formSection.classList.contains('hidden')) {
+          await switchView(formSection, processingSection);
+        }
         completeJob(job);
         return;
       }
 
       if (job.status === 'failed') {
         stopPolling();
+        closeQueueModal();
         await showClaudeAlert({
           icon: 'error',
           title: 'Xử lý thất bại',

@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#faf9f5">
+  <meta name="description" content="BO - LocketGold Quản Trị Viên — Giám sát hàng đợi và tiến trình kích hoạt tài khoản real-time.">
+  <title>Admin Dashboard — BO LocketGold</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            paper: '#faf9f5',
+            canvas: '#f5f0e8',
+            surface: '#efe9de',
+            ink: '#141413',
+            body: '#3d3d3a',
+            muted: '#6c6a64',
+            line: '#e6dfd8',
+            accent: {
+              50: '#faf1ed',
+              100: '#f3e1da',
+              400: '#d98c73',
+              500: '#cc785c',
+              600: '#a9583e',
+              700: '#86432f'
+            },
+            moss: {
+              50: '#eff4ed',
+              500: '#66825c',
+              700: '#486043'
+            }
+          },
+          fontFamily: {
+            display: ['Newsreader', 'Georgia', 'serif'],
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['IBM Plex Mono', 'ui-monospace', 'monospace']
+          },
+          boxShadow: {
+            soft: '0 1px 2px rgba(41,39,36,.04), 0 16px 48px rgba(68,58,48,.08)',
+            lift: '0 12px 30px rgba(111,75,57,.13)'
+          }
+        }
+      }
+    }
+  </script>
+
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="min-h-screen bg-paper font-sans text-ink antialiased selection:bg-accent-100 selection:text-ink">
+  <div class="site-atmosphere" aria-hidden="true">
+    <div class="ambient-mesh"></div>
+    <div class="ambient-orb ambient-orb-one"></div>
+    <div class="ambient-orb ambient-orb-two"></div>
+    <div class="ambient-orb ambient-orb-three"></div>
+    <div class="ambient-orb ambient-orb-four"></div>
+    <div class="ambient-grid"></div>
+  </div>
+
+  <!-- MÀN HÌNH KHÓA XÁC THỰC MẬT KHẨU -->
+  <div id="lockScreen" class="relative z-50 flex min-h-screen items-center justify-center p-3 sm:p-4">
+    <div class="main-card w-full max-w-md border border-line bg-surface/90 p-5 shadow-soft sm:p-8">
+      <div class="text-center">
+        <div class="mx-auto flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl border border-accent-400/40 bg-accent-100/60 text-accent-700 shadow-sm">
+          <i data-lucide="shield-check" class="h-6 w-6 sm:h-7 sm:w-7"></i>
+        </div>
+        <h1 class="mt-3.5 sm:mt-4 font-display text-xl sm:text-2xl font-semibold tracking-tight text-ink">Quản Trị Viên</h1>
+        <p class="mt-1 text-xs leading-relaxed text-muted">Vui lòng nhập mật khẩu quản trị để truy cập trang giám sát hàng đợi.</p>
+      </div>
+
+      <form id="authForm" class="mt-5 sm:mt-6 space-y-4">
+        <div>
+          <label for="adminPasswordInput" class="block text-xs font-semibold text-ink">Mật khẩu truy cập</label>
+          <div class="input-shell mt-1.5 !min-h-[2.75rem]">
+            <i data-lucide="key-round" class="input-icon h-4 w-4"></i>
+            <input type="password" id="adminPasswordInput" placeholder="Nhập mật khẩu quản trị..." required
+              class="font-mono text-sm" autocomplete="current-password" autofocus>
+            <button type="button" id="togglePasswordBtn" class="input-paste-btn" title="Hiện/Ẩn mật khẩu">
+              <i data-lucide="eye" id="eyeIcon" class="h-3.5 w-3.5 text-muted"></i>
+            </button>
+          </div>
+          <p id="authErrorMsg" class="mt-2 hidden text-xs font-medium text-red-600"></p>
+        </div>
+
+        <button type="submit" id="authSubmitBtn" class="btn-primary w-full justify-center !bg-accent-600 hover:!bg-accent-700 text-white font-semibold !min-h-[2.75rem]">
+          <i data-lucide="lock-open" class="h-4 w-4"></i>
+          <span>Mở khóa Quản trị</span>
+        </button>
+      </form>
+
+      <div class="mt-5 sm:mt-6 border-t border-line/70 pt-3.5 text-center">
+        <a href="/" class="text-xs text-muted transition hover:text-ink">
+          ← Quay lại Trang chủ
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD QUẢN TRỊ CHÍNH (Sau khi đăng nhập) -->
+  <div id="adminDashboard" class="hidden relative z-10 flex min-h-screen flex-col">
+    <!-- Header Quản Trị -->
+    <header class="site-header sticky top-0 z-40 border-b border-line/80 bg-paper/92 backdrop-blur-md">
+      <div class="mx-auto flex max-w-7xl items-center justify-between gap-2 px-3 py-2.5 sm:px-6 sm:py-3.5 lg:px-8">
+        <!-- Logo -->
+        <div class="flex items-center gap-2 shrink-0">
+          <a href="/admin" class="flex items-center gap-1.5 sm:gap-2 text-decoration-none">
+            <span class="font-display text-base sm:text-xl font-bold leading-none tracking-tight text-ink">BO-LocketGold</span>
+            <span class="brand-chip !bg-accent-600 !text-white !border-accent-700 !text-[8px] sm:!text-[9px]">Admin</span>
+          </a>
+        </div>
+
+        <!-- Action buttons (Responsive layout) -->
+        <div class="flex items-center gap-1.5 sm:gap-3">
+          <!-- Real-time Status Badge -->
+          <div class="flex items-center gap-1.5 rounded-full border border-[#d3dfcf] bg-moss-50/80 px-2 py-1 text-[11px] font-medium text-moss-700">
+            <span id="liveDot" class="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-moss-500 animate-pulse"></span>
+            <span class="hidden sm:inline">Live</span>
+          </div>
+
+          <!-- Auto-Refresh Toggle Button -->
+          <button id="autoRefreshBtn" class="btn-secondary !p-1.5 sm:!py-1.5 sm:!px-3 !min-h-0 text-xs" title="Bật/Tắt tự động làm mới">
+            <i data-lucide="activity" class="h-3.5 w-3.5 text-moss-700"></i>
+            <span id="autoRefreshLabel" class="hidden md:inline">Tự làm mới: Bật</span>
+          </button>
+
+          <!-- Refresh Now -->
+          <button id="manualRefreshBtn" class="btn-secondary !p-1.5 sm:!py-1.5 sm:!px-3 !min-h-0 text-xs" title="Làm mới ngay">
+            <i data-lucide="refresh-cw" id="refreshIcon" class="h-3.5 w-3.5"></i>
+            <span class="hidden sm:inline">Làm mới</span>
+          </button>
+
+          <!-- Home Link -->
+          <a href="/" target="_blank" class="btn-secondary !p-1.5 sm:!py-1.5 sm:!px-3 !min-h-0 text-xs" title="Mở trang chủ">
+            <i data-lucide="external-link" class="h-3.5 w-3.5"></i>
+            <span class="hidden lg:inline">Trang chủ</span>
+          </a>
+
+          <!-- Logout Button -->
+          <button id="logoutBtn" class="btn-secondary !p-1.5 sm:!py-1.5 sm:!px-3 !min-h-0 text-xs !text-red-700 hover:!bg-red-50 hover:!border-red-200" title="Đăng xuất">
+            <i data-lucide="log-out" class="h-3.5 w-3.5"></i>
+            <span class="hidden sm:inline">Đăng xuất</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Nội dung chính -->
+    <main class="mx-auto w-full max-w-7xl flex-1 px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
+      <!-- Tiêu đề trang -->
+      <div class="mb-4 sm:mb-6 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+        <div>
+          <h1 class="font-display text-xl sm:text-2xl lg:text-3xl font-semibold tracking-tight text-ink">Giám sát hàng đợi & tài khoản</h1>
+          <p class="mt-0.5 text-xs text-muted">Theo dõi danh sách các yêu cầu kích hoạt Locket Gold theo thời gian thực.</p>
+        </div>
+        <div class="flex items-center gap-1.5 text-[11px] sm:text-xs text-muted">
+          <span>Cập nhật: <strong id="lastUpdatedTime" class="font-mono text-ink">--:--:--</strong></span>
+        </div>
+      </div>
+
+      <!-- Thẻ thống kê (Stats Grid - Responsive) -->
+      <section class="grid grid-cols-2 gap-2.5 sm:gap-3 sm:grid-cols-3 lg:grid-cols-5" aria-label="Thống kê tổng quan">
+        <!-- Đang xử lý -->
+        <div class="rounded-2xl border border-line bg-surface/80 p-3 sm:p-4 shadow-sm transition hover:shadow">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted">Đang xử lý</span>
+            <span class="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-lg bg-accent-100 text-accent-700">
+              <i data-lucide="loader-circle" class="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin"></i>
+            </span>
+          </div>
+          <p id="statProcessing" class="mt-2 sm:mt-3 font-mono text-xl sm:text-2xl lg:text-3xl font-bold text-accent-700">0</p>
+          <span class="mt-0.5 block text-[10px] sm:text-[11px] text-muted">Worker đang chạy</span>
+        </div>
+
+        <!-- Trong hàng đợi -->
+        <div class="rounded-2xl border border-line bg-surface/80 p-3 sm:p-4 shadow-sm transition hover:shadow">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted">Hàng đợi</span>
+            <span class="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-lg bg-[#efe6d8] text-[#936437]">
+              <i data-lucide="clock" class="h-3.5 w-3.5 sm:h-4 sm:w-4"></i>
+            </span>
+          </div>
+          <p id="statQueued" class="mt-2 sm:mt-3 font-mono text-xl sm:text-2xl lg:text-3xl font-bold text-[#936437]">0</p>
+          <span class="mt-0.5 block text-[10px] sm:text-[11px] text-muted">Đang chờ đến lượt</span>
+        </div>
+
+        <!-- Thành công -->
+        <div class="rounded-2xl border border-line bg-surface/80 p-3 sm:p-4 shadow-sm transition hover:shadow">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted">Hoàn tất</span>
+            <span class="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-lg bg-moss-50 text-moss-700">
+              <i data-lucide="check-circle-2" class="h-3.5 w-3.5 sm:h-4 sm:w-4"></i>
+            </span>
+          </div>
+          <p id="statCompleted" class="mt-2 sm:mt-3 font-mono text-xl sm:text-2xl lg:text-3xl font-bold text-moss-700">0</p>
+          <span class="mt-0.5 block text-[10px] sm:text-[11px] text-muted">Đã kích hoạt Gold</span>
+        </div>
+
+        <!-- Thất bại -->
+        <div class="rounded-2xl border border-line bg-surface/80 p-3 sm:p-4 shadow-sm transition hover:shadow">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted">Thất bại</span>
+            <span class="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-lg bg-red-50 text-red-600">
+              <i data-lucide="alert-triangle" class="h-3.5 w-3.5 sm:h-4 sm:w-4"></i>
+            </span>
+          </div>
+          <p id="statFailed" class="mt-2 sm:mt-3 font-mono text-xl sm:text-2xl lg:text-3xl font-bold text-red-600">0</p>
+          <span class="mt-0.5 block text-[10px] sm:text-[11px] text-muted">Lỗi phân giải/Gateway</span>
+        </div>
+
+        <!-- Tổng cộng -->
+        <div class="col-span-2 rounded-2xl border border-line bg-surface/80 p-3 sm:p-4 shadow-sm transition hover:shadow sm:col-span-1">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-muted">Tổng yêu cầu</span>
+            <span class="flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-lg bg-line/80 text-ink">
+              <i data-lucide="layers" class="h-3.5 w-3.5 sm:h-4 sm:w-4"></i>
+            </span>
+          </div>
+          <p id="statTotal" class="mt-2 sm:mt-3 font-mono text-xl sm:text-2xl lg:text-3xl font-bold text-ink">0</p>
+          <span class="mt-0.5 block text-[10px] sm:text-[11px] text-muted">Tất cả bản ghi</span>
+        </div>
+      </section>
+
+      <!-- Danh sách chi tiết các Jobs -->
+      <section class="mt-6 sm:mt-8 rounded-2xl border border-line bg-surface/70 p-3 sm:p-6 shadow-soft" aria-label="Bảng quản lý tài khoản">
+        <!-- Toolbar & Bộ lọc (Mobile optimized) -->
+        <div class="flex flex-col gap-3.5 border-b border-line/80 pb-4 sm:pb-5 lg:flex-row lg:items-center lg:justify-between">
+          <!-- Filter Tabs (Horizontal scroll on mobile) -->
+          <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar -mx-1 px-1" role="tablist">
+            <button class="filter-tab is-active whitespace-nowrap" data-filter="all">
+              <span>Tất cả</span>
+              <span id="tabBadgeAll" class="tab-badge">0</span>
+            </button>
+            <button class="filter-tab whitespace-nowrap" data-filter="active">
+              <span>Đang xử lý & Chờ</span>
+              <span id="tabBadgeActive" class="tab-badge">0</span>
+            </button>
+            <button class="filter-tab whitespace-nowrap" data-filter="completed">
+              <span>Hoàn thành</span>
+              <span id="tabBadgeCompleted" class="tab-badge">0</span>
+            </button>
+            <button class="filter-tab whitespace-nowrap" data-filter="failed">
+              <span>Thất bại</span>
+              <span id="tabBadgeFailed" class="tab-badge">0</span>
+            </button>
+          </div>
+
+          <!-- Search & Action Buttons -->
+          <div class="flex items-center gap-2 w-full lg:w-auto">
+            <div class="input-shell !min-h-[2.4rem] !py-1 !px-2.5 flex-1 lg:w-64">
+              <i data-lucide="search" class="input-icon h-3.5 w-3.5"></i>
+              <input type="text" id="adminSearchInput" placeholder="Tìm Username, UID, ID..." class="!text-xs w-full">
+            </div>
+
+            <button id="clearHistoryBtn" class="btn-secondary !min-h-[2.4rem] !py-1 !px-3 text-xs !text-muted hover:!text-red-700 shrink-0" title="Dọn dẹp các bản ghi hoàn thành/thất bại">
+              <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
+              <span class="hidden sm:inline whitespace-nowrap">Dọn lịch sử</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Bảng danh sách Desktop (Hidden on mobile) -->
+        <div class="mt-4 hidden md:block overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="border-b border-line/80 text-[11px] uppercase tracking-wider text-muted font-semibold">
+                <th class="pb-3 pr-4">Tài khoản Locket</th>
+                <th class="pb-3 px-3">UID</th>
+                <th class="pb-3 px-3">Trạng thái</th>
+                <th class="pb-3 px-3">Tiến độ</th>
+                <th class="pb-3 px-3">Thời gian</th>
+                <th class="pb-3 pl-3 text-right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="jobsTableBody" class="divide-y divide-line/50">
+              <!-- Render tự động bởi admin.js -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Danh sách Card cho Mobile (Visible on mobile only) -->
+        <div id="jobsMobileList" class="mt-4 space-y-3 md:hidden">
+          <!-- Render tự động bởi admin.js -->
+        </div>
+
+        <!-- Empty State (Khi không có dữ liệu) -->
+        <div id="emptyState" class="hidden py-10 sm:py-12 text-center">
+          <div class="mx-auto flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-line/60 text-muted">
+            <i data-lucide="inbox" class="h-5 w-5 sm:h-6 sm:w-6"></i>
+          </div>
+          <h3 class="mt-2.5 text-xs sm:text-sm font-semibold text-ink">Chưa có yêu cầu nào</h3>
+          <p class="mt-1 text-[11px] sm:text-xs text-muted">Các tài khoản gửi qua trang chủ sẽ xuất hiện tại đây theo thời gian thực.</p>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-auto border-t border-line/80 bg-surface/40 py-3.5 text-center text-xs text-muted">
+      <span>BO - LocketGold Admin Control Dashboard</span>
+    </footer>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+
+</html>

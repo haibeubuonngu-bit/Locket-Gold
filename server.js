@@ -3,6 +3,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const crypto = require('crypto');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,6 +21,94 @@ const NEXTDNS_PROFILE_ID = process.env.NEXTDNS_PROFILE_ID || '878367';
 const NEXTDNS_IOS_LINK = `https://apple.nextdns.io/?profile=${NEXTDNS_PROFILE_ID}`;
 const NEXTDNS_ANDROID_DNS = `${NEXTDNS_PROFILE_ID}.dns.nextdns.io`;
 
+// Admin Auth Config
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '129324';
+const JWT_SECRET = process.env.JWT_SECRET || ('locket-admin-secret-seed-' + ADMIN_PASSWORD);
+
+// Data Persistence Config
+const DATA_DIR = path.join(__dirname, 'data');
+const DATA_FILE = path.join(DATA_DIR, 'jobs.json');
+
+// In-Memory Queue State
+const queue = [];
+const jobs = new Map(); // jobId -> Job details
+let isProcessing = false;
+
+// Admin Auth Helpers
+function generateAdminToken() {
+  const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+  const data = `${expiresAt}`;
+  const hmac = crypto.createHmac('sha256', JWT_SECRET).update(`${data}:${ADMIN_PASSWORD}`).digest('hex');
+  return `${data}.${hmac}`;
+}
+
+function verifyAdminToken(token) {
+  if (!token || typeof token !== 'string') return false;
+  const parts = token.split('.');
+  if (parts.length !== 2) return false;
+  const [expiresAtStr, hmac] = parts;
+  const expiresAt = parseInt(expiresAtStr, 10);
+  if (isNaN(expiresAt) || Date.now() > expiresAt) return false;
+  const expectedHmac = crypto.createHmac('sha256', JWT_SECRET).update(`${expiresAtStr}:${ADMIN_PASSWORD}`).digest('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(hmac, 'hex'), Buffer.from(expectedHmac, 'hex'));
+  } catch {
+    return false;
+  }
+}
+
+function requireAdminAuth(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ')
+    ? authHeader.substring(7).trim()
+    : (req.headers['x-admin-token'] || req.query.token || '');
+
+  if (!token || !verifyAdminToken(token)) {
+    return res.status(401).json({
+      success: false,
+      message: 'Phiên đăng nhập quản trị không hợp lệ hoặc đã hết hạn.'
+    });
+  }
+  next();
+}
+
+// Persistence Helpers
+function loadJobsFromFile() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (fs.existsSync(DATA_FILE)) {
+      const raw = fs.readFileSync(DATA_FILE, 'utf8');
+      const loaded = JSON.parse(raw);
+      if (Array.isArray(loaded)) {
+        loaded.forEach(job => {
+          if (job && job.id) {
+            jobs.set(job.id, job);
+            if (job.status === 'queued' && !queue.includes(job.id)) {
+              queue.push(job.id);
+            }
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Could not load jobs from file:', err.message);
+  }
+}
+
+function saveJobsToFile() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const allJobs = Array.from(jobs.values());
+    fs.writeFileSync(DATA_FILE, JSON.stringify(allJobs, null, 2), 'utf8');
+  } catch (err) {
+    // Non-blocking in serverless/read-only environment
+  }
+}
+
 // Rate Limiter for new submissions only
 const submitLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
@@ -30,12 +119,6 @@ const submitLimiter = rateLimit({
     message: 'Bạn gửi yêu cầu quá nhanh! Vui lòng đợi 1 phút trước khi thử lại.'
   }
 });
-
-
-// In-Memory Queue State
-const queue = [];
-const jobs = new Map(); // jobId -> Job details
-let isProcessing = false;
 
 // Helper: Extract UID from username or Locket link
 async function resolveLocketUid(input) {
@@ -166,6 +249,7 @@ async function processQueue() {
     job.status = 'processing';
     job.progress = 15;
     job.logs.push('Đang tìm kiếm UID Locket trên hệ thống...');
+    saveJobsToFile();
 
     try {
       // Step 1: Resolve UID & Avatar
@@ -176,6 +260,7 @@ async function processQueue() {
       job.initials = result.initials;
       job.progress = 40;
       job.logs.push(`Đã tìm thấy tài khoản! @${job.cleanUsername} (UID: ${job.uid})`);
+      saveJobsToFile();
 
       await new Promise(r => setTimeout(r, 1000));
 
@@ -280,13 +365,16 @@ async function processQueue() {
         iosLink: NEXTDNS_IOS_LINK,
         androidDns: NEXTDNS_ANDROID_DNS
       };
+      saveJobsToFile();
     } catch (err) {
       job.status = 'failed';
       job.error = err.message || 'Lỗi không xác định trong quá trình xử lý';
       job.logs.push(`❌ Thất bại: ${job.error}`);
+      saveJobsToFile();
     }
 
     queue.shift();
+    saveJobsToFile();
     // Cooldown between jobs
     await new Promise(r => setTimeout(r, 500));
   }
@@ -295,6 +383,22 @@ async function processQueue() {
 }
 
 // --- API Endpoints ---
+
+// Helper: Mask username for public queue privacy
+function maskUsername(username) {
+  if (!username) return 'lk_***';
+  const clean = String(username).replace(/^[@/]+/, '').trim();
+  if (clean.length <= 2) return clean[0] + '***';
+  if (clean.length <= 4) return clean.slice(0, 1) + '***' + clean.slice(-1);
+  return clean.slice(0, 2) + '***' + clean.slice(-1);
+}
+
+function getActiveProcessingJob() {
+  for (const j of jobs.values()) {
+    if (j.status === 'processing') return j;
+  }
+  return null;
+}
 
 // Submit Job to Queue
 app.post('/api/queue', submitLimiter, async (req, res) => {
@@ -323,16 +427,19 @@ app.post('/api/queue', submitLimiter, async (req, res) => {
 
   jobs.set(jobId, newJob);
   queue.push(jobId);
+  saveJobsToFile();
 
   // Trigger processor asynchronously
   processQueue().catch(console.error);
 
   const queuePosition = queue.indexOf(jobId) + 1;
+  const estimatedWaitSeconds = Math.max(8, queuePosition * 12);
 
   return res.json({
     success: true,
     jobId: jobId,
     position: queuePosition,
+    estimatedWaitSeconds: estimatedWaitSeconds,
     message: 'Yêu cầu đã được ghi nhận vào hàng đợi.'
   });
 });
@@ -350,15 +457,58 @@ app.get('/api/status/:jobId', (req, res) => {
   }
 
   let queuePosition = 0;
+  const queueAhead = [];
+  const activeProcessing = getActiveProcessingJob();
+
   if (job.status === 'queued') {
-    queuePosition = queue.indexOf(jobId) + 1;
+    const idx = queue.indexOf(jobId);
+    queuePosition = idx !== -1 ? idx + 1 : 1;
+
+    // If another job is currently being processed, add it first to the queue ahead list
+    if (activeProcessing && activeProcessing.id !== jobId) {
+      queueAhead.push({
+        id: activeProcessing.id,
+        maskedUsername: maskUsername(activeProcessing.cleanUsername || activeProcessing.username),
+        status: 'processing',
+        avatarUrl: activeProcessing.avatarUrl || null,
+        initials: activeProcessing.initials || 'LK',
+        isCurrentlyRunning: true
+      });
+    }
+
+    // Add jobs in queue that are ahead of this one
+    if (idx > 0) {
+      for (let i = 0; i < idx; i++) {
+        const aheadId = queue[i];
+        const aheadJob = jobs.get(aheadId);
+        if (aheadJob && aheadJob.id !== activeProcessing?.id) {
+          queueAhead.push({
+            id: aheadJob.id,
+            maskedUsername: maskUsername(aheadJob.cleanUsername || aheadJob.username),
+            status: 'queued',
+            avatarUrl: aheadJob.avatarUrl || null,
+            initials: aheadJob.initials || 'LK',
+            position: i + 1
+          });
+        }
+      }
+    }
   }
+
+  const estimatedWaitSeconds = queuePosition > 0 ? Math.max(6, queueAhead.length * 12) : 0;
 
   return res.json({
     success: true,
     job: {
       ...job,
-      queuePosition: queuePosition
+      queuePosition: queuePosition,
+      queueAhead: queueAhead,
+      estimatedWaitSeconds: estimatedWaitSeconds,
+      activeProcessing: activeProcessing ? {
+        id: activeProcessing.id,
+        maskedUsername: maskUsername(activeProcessing.cleanUsername || activeProcessing.username),
+        progress: activeProcessing.progress || 10
+      } : null
     }
   });
 });
@@ -398,85 +548,146 @@ app.post('/api/lookup', async (req, res) => {
   }
 });
 
-// Download DNS Config (.mobileconfig) for NextDNS BO_LocketGold
-app.get('/download-config', (req, res) => {
-  const profileId = NEXTDNS_PROFILE_ID || '878367';
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>PayloadDisplayName</key>
-    <string>BO - LocketGold (${profileId})</string>
-    <key>PayloadDescription</key>
-    <string>Cấu hình DNS Anti-Revoke bảo vệ Locket Gold - Powered by BewOnlyfans (Profile: ${profileId})</string>
-    <key>PayloadIdentifier</key>
-    <string>com.locketgold.bewonlyfans.profile</string>
-    <key>PayloadScope</key>
-    <string>System</string>
-    <key>PayloadType</key>
-    <string>Configuration</string>
-    <key>PayloadUUID</key>
-    <string>4C2E4174-58CC-4D04-A91D-9D095F770001</string>
-    <key>PayloadVersion</key>
-    <integer>1</integer>
-    <key>PayloadContent</key>
-    <array>
-      <dict>
-        <key>DNSSettings</key>
-        <dict>
-          <key>DNSProtocol</key>
-          <string>HTTPS</string>
-          <key>ServerURL</key>
-          <string>https://dns.nextdns.io/${profileId}</string>
-        </dict>
-        <key>OnDemandRules</key>
-        <array>
-          <dict>
-            <key>Action</key>
-            <string>EvaluateConnection</string>
-            <key>ActionParameters</key>
-            <array>
-              <dict>
-                <key>DomainAction</key>
-                <string>NeverConnect</string>
-                <key>Domains</key>
-                <array>
-                  <string>captive.apple.com</string>
-                  <string>3gppnetwork.org</string>
-                  <string>dav.orange.fr</string>
-                  <string>vvm.mobistar.be</string>
-                  <string>vvm.mstore.msg.t-mobile.com</string>
-                  <string>tma.vvm.mone.pan-net.eu</string>
-                  <string>vvm.ee.co.uk</string>
-                </array>
-              </dict>
-            </array>
-          </dict>
-          <dict>
-            <key>Action</key>
-            <string>Connect</string>
-          </dict>
-        </array>
-        <key>PayloadType</key>
-        <string>com.apple.dnsSettings.managed</string>
-        <key>PayloadIdentifier</key>
-        <string>com.locketgold.bewonlyfans.dns</string>
-        <key>PayloadUUID</key>
-        <string>4C2E4174-58CC-4D04-A91D-9D095F770002</string>
-        <key>PayloadDisplayName</key>
-        <string>BO - LocketGold (${profileId})</string>
-        <key>PayloadOrganization</key>
-        <string>BO - LocketGold</string>
-        <key>PayloadVersion</key>
-        <integer>1</integer>
-      </dict>
-    </array>
-  </dict>
-</plist>`;
+// --- Admin Endpoints ---
 
-  res.setHeader('Content-Type', 'application/x-apple-aspen-config');
-  res.setHeader('Content-Disposition', 'inline; filename=BO_LocketGold.mobileconfig');
-  return res.send(xml);
+// Admin Authentication
+app.post('/api/admin/auth', (req, res) => {
+  const { password } = req.body;
+  if (!password || String(password).trim() !== ADMIN_PASSWORD) {
+    return res.status(401).json({
+      success: false,
+      message: 'Mật khẩu quản trị không chính xác.'
+    });
+  }
+
+  const token = generateAdminToken();
+  return res.json({
+    success: true,
+    token: token,
+    message: 'Xác thực quản trị viên thành công.'
+  });
+});
+
+// Get All Jobs & Queue List
+app.get('/api/admin/jobs', requireAdminAuth, (req, res) => {
+  const allJobs = Array.from(jobs.values()).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  const total = allJobs.length;
+  const queued = allJobs.filter(j => j.status === 'queued').length;
+  const processing = allJobs.filter(j => j.status === 'processing').length;
+  const completed = allJobs.filter(j => j.status === 'completed').length;
+  const failed = allJobs.filter(j => j.status === 'failed').length;
+  const cancelled = allJobs.filter(j => j.status === 'cancelled').length;
+
+  return res.json({
+    success: true,
+    stats: {
+      total,
+      queued,
+      processing,
+      completed,
+      failed,
+      cancelled,
+      isWorkerActive: isProcessing,
+      serverUptime: Math.floor(process.uptime())
+    },
+    queue: queue,
+    jobs: allJobs
+  });
+});
+
+// Cancel a Queued Job
+app.post('/api/admin/jobs/:id/cancel', requireAdminAuth, (req, res) => {
+  const { id } = req.params;
+  const job = jobs.get(id);
+
+  if (!job) {
+    return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu.' });
+  }
+
+  const qIdx = queue.indexOf(id);
+  if (qIdx !== -1) {
+    queue.splice(qIdx, 1);
+  }
+
+  job.status = 'cancelled';
+  job.logs.push('🚫 Yêu cầu đã bị hủy bởi Quản trị viên.');
+  saveJobsToFile();
+
+  return res.json({
+    success: true,
+    message: `Đã hủy yêu cầu của @${job.username}`
+  });
+});
+
+// Retry a Failed / Cancelled Job
+app.post('/api/admin/jobs/:id/retry', requireAdminAuth, (req, res) => {
+  const { id } = req.params;
+  const job = jobs.get(id);
+
+  if (!job) {
+    return res.status(404).json({ success: false, message: 'Không tìm thấy yêu cầu.' });
+  }
+
+  job.status = 'queued';
+  job.progress = 5;
+  job.error = null;
+  job.logs.push('🔄 Yêu cầu được thử lại bởi Quản trị viên.');
+
+  if (!queue.includes(id)) {
+    queue.push(id);
+  }
+
+  saveJobsToFile();
+  processQueue().catch(console.error);
+
+  return res.json({
+    success: true,
+    message: `Đã đưa @${job.username} trở lại hàng đợi.`
+  });
+});
+
+// Delete a Job
+app.delete('/api/admin/jobs/:id', requireAdminAuth, (req, res) => {
+  const { id } = req.params;
+  const qIdx = queue.indexOf(id);
+  if (qIdx !== -1) {
+    queue.splice(qIdx, 1);
+  }
+
+  jobs.delete(id);
+  saveJobsToFile();
+
+  return res.json({
+    success: true,
+    message: 'Đã xóa bản ghi thành công.'
+  });
+});
+
+// Clear Finished History
+app.post('/api/admin/jobs/clear-history', requireAdminAuth, (req, res) => {
+  let count = 0;
+  for (const [id, job] of jobs.entries()) {
+    if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+      jobs.delete(id);
+      count++;
+    }
+  }
+  saveJobsToFile();
+
+  return res.json({
+    success: true,
+    message: `Đã dọn dẹp ${count} bản ghi lịch sử.`
+  });
+});
+
+// Download DNS Config (.mobileconfig) - redirect to official Vercel host
+app.get('/download-config', (req, res) => {
+  return res.redirect(302, 'https://locket-pre.vercel.app/download-config');
+});
+
+// Admin Route
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 // Fallback to index.html
@@ -484,11 +695,18 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Load persistent data
+loadJobsFromFile();
+if (queue.length > 0) {
+  processQueue().catch(console.error);
+}
+
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`==========================================`);
     console.log(`🚀 BO - LocketGold Web Server is running on:`);
     console.log(`👉 http://localhost:${PORT}`);
+    console.log(`👉 http://localhost:${PORT}/admin`);
     console.log(`==========================================`);
   });
 }
